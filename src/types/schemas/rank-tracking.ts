@@ -153,3 +153,6 @@ export const getPositionMatrixSchema = z.object({
   device: deviceEnum,
   runLimit: z.number().int().positive().max(26).default(12),
 });
+
+export const rankTrackingProviderSchema = z.enum(["dataforseo", "runner"]);
+export type RankTrackingProvider = z.infer<typeof rankTrackingProviderSchema>;
