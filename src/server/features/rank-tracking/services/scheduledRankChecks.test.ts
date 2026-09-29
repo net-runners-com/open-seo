@@ -432,3 +432,36 @@ describe("runScheduledRankChecks runner provider", () => {
     expect(mocks.reconcileRunnerJobs).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("runScheduledRankChecks budget isolation for runner configs", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mocks.isHostedServerAuthMode.mockResolvedValue(true);
+    mocks.customerHasPaidPlan.mockResolvedValue(true);
+    mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.beginRankCheckRun.mockResolvedValue({ ok: true, runId: "run_x" });
+    mocks.startRunnerRun.mockResolvedValue({ runId: "run_r" });
+  });
+
+  it("a large runner config neither consumes budget nor starves later paid configs", async () => {
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([
+      dueConfig({ id: "df_1" }),
+      dueConfig({ id: "runner_big", provider: "runner" }),
+      dueConfig({ id: "df_2", nextCheckAt: "2026-01-03T00:00:00.000Z" }),
+    ]);
+    mocks.getKeywordCountsForConfigs.mockResolvedValue(
+      new Map([
+        ["df_1", 5],
+        ["runner_big", 600], // 600 kw x both = 1200 units > budget 1000
+        ["df_2", 5],
+      ]),
+    );
+
+    await runTick();
+
+    expect(mocks.startRunnerRun).toHaveBeenCalledTimes(1);
+    // The paid config after the runner config must still be admitted.
+    expect(mocks.beginRankCheckRun).toHaveBeenCalledTimes(2);
+  });
+});

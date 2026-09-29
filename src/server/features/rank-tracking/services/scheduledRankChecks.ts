@@ -119,17 +119,6 @@ export async function runScheduledRankChecks(env: Env) {
 
       const kwCount = keywordCounts.get(config.id) ?? 0;
       const taskUnits = kwCount * devicesCount(config.devices);
-      // Projected stop: admit only what fits the budget. The first start of a
-      // tick is exempt so an oversized config can never starve, and zero-unit
-      // rows (no keywords) always advance.
-      if (
-        started > 0 &&
-        unitsStarted + taskUnits > SCHEDULED_TASK_UNIT_BUDGET
-      ) {
-        stoppedByBudget = true;
-        break;
-      }
-
       const observedNextCheckAt = config.nextCheckAt;
       const nextCheckAt = computeNextCheckAt(interval, observedNextCheckAt);
 
@@ -164,6 +153,18 @@ export async function runScheduledRankChecks(env: Env) {
           alreadyRunningConfigIds.push(config.id);
         }
         continue;
+      }
+
+      // Projected stop: admit only what fits the budget. The first start of a
+      // tick is exempt so an oversized config can never starve, and zero-unit
+      // rows (no keywords) always advance. Runner configs never reach this:
+      // the budget guards DataForSEO request rate, which they don't consume.
+      if (
+        started > 0 &&
+        unitsStarted + taskUnits > SCHEDULED_TASK_UNIT_BUDGET
+      ) {
+        stoppedByBudget = true;
+        break;
       }
 
       // Self-hosted deployments treat every config as paid and make no Autumn

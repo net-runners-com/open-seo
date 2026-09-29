@@ -19,6 +19,16 @@ const jobMocks = vi.hoisted(() => ({
   markJobDone: vi.fn(),
   markJobFailed: vi.fn(),
   releaseExpiredClaims: vi.fn(),
+  findOrphanRunnerRuns:
+    vi.fn<
+      () => Promise<
+        Array<{
+          runId: string;
+          configId: string;
+          scheduleInterval: "daily" | "weekly" | "monthly" | "manual";
+        }>
+      >
+    >(),
   countJobsByStatusForRun: vi.fn(),
   getRunnerHeartbeat: vi.fn(),
   markConfigChecked:
@@ -236,6 +246,29 @@ describe("RunnerJobService.recordHeartbeat", () => {
         organizationId: "selfhost",
         status: "cooldown",
       }),
+    );
+  });
+});
+
+describe("RunnerJobService.reconcileRunnerJobs", () => {
+  it("closes orphaned runner runs whose jobs are all settled", async () => {
+    jobMocks.releaseExpiredClaims.mockResolvedValue({ releasedRunIds: [] });
+    jobMocks.findOrphanRunnerRuns.mockResolvedValue([
+      { runId: "run_9", configId: "cfg_9", scheduleInterval: "weekly" },
+    ]);
+    jobMocks.countJobsByStatusForRun.mockResolvedValue({
+      open: 0,
+      done: 2,
+      failed: 0,
+    });
+    await RunnerJobService.reconcileRunnerJobs("2026-09-29T02:00:00.000Z");
+    expect(trackingMocks.updateRun).toHaveBeenCalledWith(
+      "run_9",
+      expect.objectContaining({ status: "completed", keywordsChecked: 2 }),
+    );
+    expect(jobMocks.markConfigChecked).toHaveBeenCalledWith(
+      "cfg_9",
+      expect.objectContaining({ lastCheckedAt: expect.anything() }),
     );
   });
 });

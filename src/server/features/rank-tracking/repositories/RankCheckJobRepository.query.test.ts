@@ -248,3 +248,28 @@ describe("RankCheckJobRepository heartbeats", () => {
     });
   });
 });
+
+describe("RankCheckJobRepository.findOrphanRunnerRuns", () => {
+  it("returns open runner runs with no pending or claimed jobs", async () => {
+    // run_1 (cfg_a, runner) has pending jobs -> not orphaned.
+    // run_2 (cfg_b, runner): settle its only job -> orphaned.
+    await client.executeMultiple(`
+      UPDATE rank_check_runs SET status='running';
+      UPDATE rank_check_jobs SET status='done' WHERE id='job_b1';
+    `);
+    const orphans = await RankCheckJobRepository.findOrphanRunnerRuns();
+    expect(orphans).toEqual([
+      { runId: "run_2", configId: "cfg_b", scheduleInterval: "weekly" },
+    ]);
+  });
+
+  it("ignores completed runs and non-runner configs", async () => {
+    await client.executeMultiple(`
+      UPDATE rank_check_jobs SET status='done';
+      UPDATE rank_check_runs SET status='completed' WHERE id='run_1';
+      UPDATE rank_tracking_configs SET provider='dataforseo' WHERE id='cfg_b';
+    `);
+    const orphans = await RankCheckJobRepository.findOrphanRunnerRuns();
+    expect(orphans).toEqual([]);
+  });
+});

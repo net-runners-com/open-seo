@@ -237,24 +237,16 @@ async function reconcileRunnerJobs(nowIso: string): Promise<void> {
   const cutoffIso = new Date(
     new Date(nowIso).getTime() - CLAIM_TIMEOUT_MS,
   ).toISOString();
-  const { releasedRunIds } = await RankCheckJobRepository.releaseExpiredClaims({
+  await RankCheckJobRepository.releaseExpiredClaims({
     cutoffIso,
     maxAttempts: CLAIM_MAX_ATTEMPTS,
   });
-  for (const runId of releasedRunIds) {
-    // A run whose expired jobs all aged into "failed" must still close.
-    const run = await RankTrackingRepository.getRunById(runId);
-    if (!run || run.status === "completed" || run.status === "failed") continue;
-    const config = await RankTrackingRepository.getConfigById({
-      configId: run.configId,
-      projectId: run.projectId,
-    });
-    if (!config) continue;
-    await completeRunIfFinished({
-      runId,
-      configId: run.configId,
-      scheduleInterval: config.scheduleInterval,
-    });
+  // Close every runner run with no open jobs left — covers claims that just
+  // aged into "failed" above AND runs orphaned by a crash between settling
+  // the last job and closing the run (the active-run unique index would
+  // otherwise block the config forever).
+  for (const run of await RankCheckJobRepository.findOrphanRunnerRuns()) {
+    await completeRunIfFinished(run);
   }
 }
 

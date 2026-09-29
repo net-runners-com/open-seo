@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   projects,
   rankCheckJobs,
+  rankCheckRuns,
   rankTrackingConfigs,
   runnerHeartbeats,
 } from "@/db/schema";
@@ -200,6 +201,36 @@ async function countJobsByStatusForRun(
   return counts;
 }
 
+// Runner runs still open although no job is pending or claimed — a crash
+// between settling the last job and closing the run leaves these behind, and
+// the unique active-run index would block every future run for the config.
+async function findOrphanRunnerRuns(): Promise<
+  Array<{
+    runId: string;
+    configId: string;
+    scheduleInterval: "daily" | "weekly" | "monthly" | "manual";
+  }>
+> {
+  return db
+    .select({
+      runId: rankCheckRuns.id,
+      configId: rankCheckRuns.configId,
+      scheduleInterval: rankTrackingConfigs.scheduleInterval,
+    })
+    .from(rankCheckRuns)
+    .innerJoin(
+      rankTrackingConfigs,
+      eq(rankCheckRuns.configId, rankTrackingConfigs.id),
+    )
+    .where(
+      and(
+        eq(rankTrackingConfigs.provider, "runner"),
+        inArray(rankCheckRuns.status, ["pending", "running"]),
+        sql`NOT EXISTS (SELECT 1 FROM ${rankCheckJobs} WHERE ${rankCheckJobs.runId} = ${rankCheckRuns.id} AND ${rankCheckJobs.status} IN ('pending', 'claimed'))`,
+      ),
+    );
+}
+
 // Stamp a runner config after its run closes (lastCheckedAt / nextCheckAt).
 async function markConfigChecked(
   configId: string,
@@ -248,6 +279,7 @@ export const RankCheckJobRepository = {
   markJobDone,
   markJobFailed,
   releaseExpiredClaims,
+  findOrphanRunnerRuns,
   countJobsByStatusForRun,
   markConfigChecked,
   getRunnerHeartbeat,
