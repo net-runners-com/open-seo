@@ -134,6 +134,8 @@ async function getDueConfigsWithOrganization(nowIso: string) {
         serpDepth: rankTrackingConfigs.serpDepth,
         scheduleInterval: rankTrackingConfigs.scheduleInterval,
         nextCheckAt: rankTrackingConfigs.nextCheckAt,
+        provider: rankTrackingConfigs.provider,
+        trackLocalPack: rankTrackingConfigs.trackLocalPack,
         organizationId: projects.organizationId,
       })
       .from(rankTrackingConfigs)

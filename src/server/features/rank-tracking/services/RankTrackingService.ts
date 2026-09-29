@@ -32,6 +32,7 @@ import {
 import { getLatestResults } from "./rankTrackingResults";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 import { RankTrackingKeywordService } from "./RankTrackingKeywordService";
+import { RunnerJobService } from "./RunnerJobService";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -184,6 +185,26 @@ async function triggerCheck(input: {
   maxCostCredits?: number;
 }): Promise<RankCheckTriggerResult> {
   const config = await getValidatedConfig(input.configId, input.projectId);
+
+  // Runner-provider configs cost nothing: queue jobs for the self-hosted
+  // runner instead of a DataForSEO workflow, with no billing gate.
+  if (config.provider === "runner") {
+    const runnerResult = await RunnerJobService.startRunnerRun({
+      config,
+      projectId: input.projectId,
+      keywordIds: input.keywordIds,
+    });
+    if ("runId" in runnerResult) {
+      return { ok: true, runId: runnerResult.runId };
+    }
+    if (runnerResult.error === "no_keywords") {
+      throw new AppError(
+        "INTERNAL_ERROR",
+        "No keywords to track. Add keywords to this domain first.",
+      );
+    }
+    return { ok: false, reason: "already_running", blockingRunId: null };
+  }
 
   await requireRankCheckAccess(input.billingCustomer.organizationId);
 

@@ -1,4 +1,5 @@
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
+import { RunnerJobService } from "@/server/features/rank-tracking/services/RunnerJobService";
 import { beginRankCheckRun } from "@/server/features/rank-tracking/services/rankCheckRunGuards";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
@@ -37,6 +38,9 @@ const ALREADY_RUNNING_IDS_CAP = 20;
 // config that's due. Wrapped in `withPgClient` at the entrypoint (server.ts).
 export async function runScheduledRankChecks(env: Env) {
   const nowIso = new Date().toISOString();
+  // Return expired runner claims to the queue (or fail them out) before
+  // admitting new work, so a dead runner can't hold runs open forever.
+  await RunnerJobService.reconcileRunnerJobs(nowIso);
   const dueConfigs =
     await RankTrackingRepository.getDueConfigsWithOrganization(nowIso);
   const isHosted = await isHostedServerAuthMode();
@@ -115,6 +119,35 @@ export async function runScheduledRankChecks(env: Env) {
         });
         if (claimed) skippedNoKeywords++;
         else concurrentChangeSkips++;
+        continue;
+      }
+
+      // Runner-provider configs cost nothing: no billing gate, no budget
+      // consumption, no workflow — just queue jobs and advance the schedule.
+      if (config.provider === "runner") {
+        const claimedSlot = await RankTrackingRepository.claimDueConfig({
+          configId: config.id,
+          projectId: config.projectId,
+          observedNextCheckAt,
+          nextCheckAt,
+          lastSkipReason: null,
+        });
+        if (!claimedSlot) {
+          concurrentChangeSkips++;
+          continue;
+        }
+        const runnerResult = await RunnerJobService.startRunnerRun({
+          config,
+          projectId: config.projectId,
+        });
+        if ("runId" in runnerResult) {
+          started++;
+        } else if (runnerResult.error === "already_running") {
+          alreadyRunning++;
+          if (alreadyRunningConfigIds.length < ALREADY_RUNNING_IDS_CAP) {
+            alreadyRunningConfigIds.push(config.id);
+          }
+        }
         continue;
       }
 
