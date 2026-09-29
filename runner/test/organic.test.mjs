@@ -22,7 +22,7 @@ test("target present only inside the local pack yields null position", () => {
 
 test("subdomains of the target count as a match", () => {
   const out = parseOrganicResults(
-    fixtureHtml.replace("https://third.example/x", "https://www.target.example/x"),
+    fixtureHtml.replace("https://third.example", "https://www.target.example"),
     "target.example",
   );
   assert.equal(out.position, 3);
