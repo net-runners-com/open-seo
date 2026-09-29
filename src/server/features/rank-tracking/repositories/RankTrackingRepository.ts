@@ -210,6 +210,16 @@ async function claimDueConfig(input: {
  * This is how duplicate-trigger protection is enforced: the DB rejects the
  * second insert rather than a separate lock table.
  */
+async function markConfigChecked(
+  configId: string,
+  input: { lastCheckedAt: string; nextCheckAt: string | null },
+) {
+  await db
+    .update(rankTrackingConfigs)
+    .set(input)
+    .where(eq(rankTrackingConfigs.id, configId));
+}
+
 async function tryCreateRun(data: {
   id: string;
   configId: string;
@@ -472,6 +482,7 @@ export const RankTrackingRepository = {
   updateConfig,
   getDueConfigsWithOrganization,
   claimDueConfig,
+  markConfigChecked,
   tryCreateRun,
   updateRun,
   getRunById,
