@@ -95,6 +95,17 @@ scheduled cron (*/5)                       runner (ユーザーのマシン / VP
   ブラウザ起動を伴う E2E は CI 対象外（手動 smoke スクリプトを runner/ に同梱）。
 - スキーマ変更は schema-parity.test.ts の対象に含める。
 
+## 計画時の修正（2026-09-29 プラン作成で確定）
+
+- ジョブの searchType (organic | local_pack) は廃止。rank_snapshots の
+  (runId, trackingKeywordId, device) 一意制約と衝突するため、ジョブは
+  includeLocalPack boolean を持ち 1 ジョブで両方を返す。設定に trackLocalPack
+  トグルを追加。
+- 認証: hosted は Better Auth API キー、self-host は API キー UI が無いため
+  env RUNNER_TOKEN による固定トークン認証とする。
+- UULE は canonical name 形式のみ実装（設定が持つのは locationName であり
+  座標を持たないため。座標形式は将来必要になったら追加）。
+
 ## 未検証事項
 
 - cloakbrowser 現行バージョン（0.5.x）での captcha 回避成功率は 8 月時点の実測。再検証する。
