@@ -44,6 +44,22 @@ const baseInput = {
 describe("RankTrackingService.createConfig", () => {
   beforeEach(() => {});
 
+  it("passes provider and trackLocalPack through to the repository", async () => {
+    mocks.getConfigByProjectDomainLocation.mockResolvedValue(undefined);
+    mocks.getConfigsForProject.mockResolvedValue([]);
+    mocks.createConfig.mockResolvedValue(undefined);
+
+    await RankTrackingService.createConfig({
+      ...baseInput,
+      provider: "runner",
+      trackLocalPack: true,
+    });
+
+    expect(mocks.createConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "runner", trackLocalPack: true }),
+    );
+  });
+
   it("reactivates an archived config instead of throwing, applying the new settings", async () => {
     mocks.getConfigByProjectDomainLocation.mockResolvedValue(archivedConfig);
     mocks.getConfigsForProject.mockResolvedValue([]);

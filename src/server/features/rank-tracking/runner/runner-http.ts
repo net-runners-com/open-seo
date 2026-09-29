@@ -59,7 +59,7 @@ async function resolveScope(request: Request): Promise<RunnerAuthScope | null> {
   }
 
   // Self-host: a fixed token from the environment. Absent config fails closed.
-  const runnerToken = (env as { RUNNER_TOKEN?: string }).RUNNER_TOKEN;
+  const runnerToken = env.RUNNER_TOKEN;
   if (runnerToken && timingSafeEqual(token, runnerToken)) {
     return { organizationIds: null };
   }
@@ -101,9 +101,10 @@ export async function handleRunnerRequest(
         return errorResponse(405, "method_not_allowed", "Use GET");
       }
       const limitParam = Number(url.searchParams.get("limit"));
-      const limit = Number.isFinite(limitParam) && limitParam > 0
-        ? limitParam
-        : DEFAULT_CLAIM_LIMIT;
+      const limit =
+        Number.isFinite(limitParam) && limitParam > 0
+          ? limitParam
+          : DEFAULT_CLAIM_LIMIT;
       const jobs = await RunnerJobService.claimJobs(scope, limit);
       return jsonResponse({ jobs });
     }

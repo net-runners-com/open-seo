@@ -2,7 +2,6 @@ import {
   and,
   asc,
   count,
-  desc,
   eq,
   inArray,
   isNull,
@@ -143,8 +142,7 @@ async function getDueConfigsWithOrganization(nowIso: string) {
       .where(
         and(
           eq(rankTrackingConfigs.isActive, true),
-          // A manual config can keep a stale non-null next_check_at; without this
-          // it would be selected every tick and never advanced.
+          // Manual configs keep a stale next_check_at; skip or they re-select every tick.
           ne(rankTrackingConfigs.scheduleInterval, "manual"),
           lte(rankTrackingConfigs.nextCheckAt, nowIso),
           isNull(projects.archivedAt),
@@ -212,74 +210,11 @@ async function claimDueConfig(input: {
  * This is how duplicate-trigger protection is enforced: the DB rejects the
  * second insert rather than a separate lock table.
  */
-async function markConfigChecked(
-  configId: string,
-  input: { lastCheckedAt: string; nextCheckAt: string | null },
-) {
-  await db
-    .update(rankTrackingConfigs)
-    .set(input)
-    .where(eq(rankTrackingConfigs.id, configId));
-}
-
-async function tryCreateRun(data: {
-  id: string;
-  configId: string;
-  projectId: string;
-  keywordsTotal: number;
-  isSubsetRun?: boolean;
-}) {
-  const inserted = await db
-    .insert(rankCheckRuns)
-    .values({ ...data, status: "pending" })
-    .onConflictDoNothing()
-    .returning({ id: rankCheckRuns.id });
-  return Boolean(inserted[0]);
-}
-
-async function updateRun(
-  runId: string,
-  data: Partial<InferInsertModel<typeof rankCheckRuns>>,
-) {
-  await db.update(rankCheckRuns).set(data).where(eq(rankCheckRuns.id, runId));
-}
-
-async function getRunById(runId: string) {
-  const rows = await db
-    .select()
-    .from(rankCheckRuns)
-    .where(eq(rankCheckRuns.id, runId))
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-async function getLatestRunForConfig(configId: string) {
-  const rows = await db
-    .select()
-    .from(rankCheckRuns)
-    .where(eq(rankCheckRuns.configId, configId))
-    .orderBy(desc(rankCheckRuns.startedAt))
-    .limit(1);
-  return rows[0] ?? null;
-}
 
 /**
  * Returns the currently active (pending or running) run for a config, if any.
  * At most one such row exists, enforced by the partial unique index.
  */
-async function getActiveRunForConfig(configId: string) {
-  const rows = await db
-    .select()
-    .from(rankCheckRuns)
-    .where(
-      and(
-        eq(rankCheckRuns.configId, configId),
-        inArray(rankCheckRuns.status, ["pending", "running"]),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
 
 // ---------------------------------------------------------------------------
 // Snapshots
@@ -476,6 +411,13 @@ async function getKeywordCountsForConfigs(configIds: string[]) {
   return counts;
 }
 
+import {
+  RankCheckRunRepository,
+} from "@/server/features/rank-tracking/repositories/RankCheckRunRepository";
+
+const { tryCreateRun, updateRun, getRunById, getLatestRunForConfig, getActiveRunForConfig } =
+  RankCheckRunRepository;
+
 export const RankTrackingRepository = {
   getConfigsForProject,
   getConfigById,
@@ -484,7 +426,6 @@ export const RankTrackingRepository = {
   updateConfig,
   getDueConfigsWithOrganization,
   claimDueConfig,
-  markConfigChecked,
   tryCreateRun,
   updateRun,
   getRunById,

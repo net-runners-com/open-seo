@@ -16,10 +16,6 @@ export const runnerJobSchema = z.object({
 });
 export type RunnerJob = z.infer<typeof runnerJobSchema>;
 
-export const claimJobsResponseSchema = z.object({
-  jobs: z.array(runnerJobSchema),
-});
-
 export const runnerResultSchema = z.object({
   jobId: z.string(),
   status: z.enum(["ok", "error"]),

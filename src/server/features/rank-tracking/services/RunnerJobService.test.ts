@@ -2,8 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunnerResult } from "@/types/schemas/runner";
 import { RunnerJobService } from "./RunnerJobService";
 
+type NewJobRow = {
+  id: string;
+  runId: string;
+  configId: string;
+  trackingKeywordId: string;
+  keyword: string;
+  device: "desktop" | "mobile";
+  includeLocalPack: boolean;
+};
+
 const jobMocks = vi.hoisted(() => ({
-  createJobs: vi.fn(),
+  createJobs: vi.fn<(rows: NewJobRow[]) => Promise<void>>(),
   claimJobs: vi.fn(),
   getClaimedJob: vi.fn(),
   markJobDone: vi.fn(),
@@ -11,6 +21,13 @@ const jobMocks = vi.hoisted(() => ({
   releaseExpiredClaims: vi.fn(),
   countJobsByStatusForRun: vi.fn(),
   getRunnerHeartbeat: vi.fn(),
+  markConfigChecked:
+    vi.fn<
+      (
+        configId: string,
+        input: { lastCheckedAt: string; nextCheckAt: string | null },
+      ) => Promise<void>
+    >(),
   upsertRunnerHeartbeat: vi.fn(),
 }));
 
@@ -19,7 +36,6 @@ const trackingMocks = vi.hoisted(() => ({
   updateRun: vi.fn(),
   insertSnapshots: vi.fn(),
   getKeywordsForConfig: vi.fn(),
-  markConfigChecked: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
@@ -128,10 +144,10 @@ describe("RunnerJobService.submitResults", () => {
       "run_1",
       expect.objectContaining({ status: "completed", keywordsChecked: 4 }),
     );
-    expect(trackingMocks.markConfigChecked).toHaveBeenCalledWith(
-      "cfg_1",
-      expect.objectContaining({ nextCheckAt: expect.any(String) }),
-    );
+    expect(jobMocks.markConfigChecked).toHaveBeenCalledTimes(1);
+    const [stampedConfigId, stamp] = jobMocks.markConfigChecked.mock.calls[0];
+    expect(stampedConfigId).toBe("cfg_1");
+    expect(typeof stamp.nextCheckAt).toBe("string");
   });
 
   it("marks the run failed when all jobs terminated but some failed", async () => {
@@ -211,9 +227,15 @@ describe("RunnerJobService.recordHeartbeat", () => {
     expect(jobMocks.upsertRunnerHeartbeat).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: "orgA", status: "idle" }),
     );
-    await RunnerJobService.recordHeartbeat({ organizationIds: null }, "cooldown");
+    await RunnerJobService.recordHeartbeat(
+      { organizationIds: null },
+      "cooldown",
+    );
     expect(jobMocks.upsertRunnerHeartbeat).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: "selfhost", status: "cooldown" }),
+      expect.objectContaining({
+        organizationId: "selfhost",
+        status: "cooldown",
+      }),
     );
   });
 });

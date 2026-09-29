@@ -93,7 +93,10 @@ describe("handleRunnerRequest", () => {
     );
     expect(res?.status).toBe(200);
     expect(await res?.json()).toEqual({ jobs: [job] });
-    expect(mocks.claimJobs).toHaveBeenCalledWith({ organizationIds: ["org1"] }, 5);
+    expect(mocks.claimJobs).toHaveBeenCalledWith(
+      { organizationIds: ["org1"] },
+      5,
+    );
   });
 
   it("accepts RUNNER_TOKEN and passes the all-orgs scope", async () => {

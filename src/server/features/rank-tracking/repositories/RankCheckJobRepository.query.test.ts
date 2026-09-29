@@ -198,20 +198,22 @@ describe("RankCheckJobRepository.releaseExpiredClaims", () => {
       UPDATE rank_check_jobs SET status='claimed', attempts=1,
         claimed_at='2026-09-29T00:59:00.000Z' WHERE id='job_b1';
     `);
-    const { releasedRunIds } = await RankCheckJobRepository.releaseExpiredClaims(
-      { cutoffIso: "2026-09-29T00:30:00.000Z", maxAttempts: 3 },
-    );
+    const { releasedRunIds } =
+      await RankCheckJobRepository.releaseExpiredClaims({
+        cutoffIso: "2026-09-29T00:30:00.000Z",
+        maxAttempts: 3,
+      });
     expect(releasedRunIds).toEqual(["run_1"]);
 
     const rows = await client.execute(
       "SELECT id, status, claimed_at, last_error FROM rank_check_jobs ORDER BY id",
     );
-    const byId = Object.fromEntries(rows.rows.map((r) => [r.id, r]));
-    expect(byId.job_a1.status).toBe("pending");
-    expect(byId.job_a1.claimed_at).toBeNull();
-    expect(byId.job_a2.status).toBe("failed");
-    expect(byId.job_a2.last_error).toBe("claim expired");
-    expect(byId.job_b1.status).toBe("claimed"); // 期限内は触らない
+    const byId = new Map(rows.rows.map((r) => [r.id, r]));
+    expect(byId.get("job_a1")?.status).toBe("pending");
+    expect(byId.get("job_a1")?.claimed_at).toBeNull();
+    expect(byId.get("job_a2")?.status).toBe("failed");
+    expect(byId.get("job_a2")?.last_error).toBe("claim expired");
+    expect(byId.get("job_b1")?.status).toBe("claimed"); // 期限内は触らない
   });
 });
 
@@ -221,7 +223,8 @@ describe("RankCheckJobRepository.countJobsByStatusForRun", () => {
       UPDATE rank_check_jobs SET status='done' WHERE id='job_a1';
       UPDATE rank_check_jobs SET status='claimed' WHERE id='job_a2';
     `);
-    const counts = await RankCheckJobRepository.countJobsByStatusForRun("run_1");
+    const counts =
+      await RankCheckJobRepository.countJobsByStatusForRun("run_1");
     expect(counts).toEqual({ open: 1, done: 1, failed: 0 });
   });
 });

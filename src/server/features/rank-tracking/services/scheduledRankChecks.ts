@@ -34,6 +34,30 @@ const TICK_DEADLINE_MS = 3 * 60_000;
 // configs leave no durable trace on their row, so the summary names them.
 const ALREADY_RUNNING_IDS_CAP = 20;
 
+// Claim a runner-provider config's schedule slot and queue its jobs.
+async function startRunnerConfig(
+  config: Awaited<
+    ReturnType<typeof RankTrackingRepository.getDueConfigsWithOrganization>
+  >[number],
+  observedNextCheckAt: string,
+  nextCheckAt: string,
+): Promise<"started" | "concurrent_change" | "already_running" | "noop"> {
+  const claimedSlot = await RankTrackingRepository.claimDueConfig({
+    configId: config.id,
+    projectId: config.projectId,
+    observedNextCheckAt,
+    nextCheckAt,
+    lastSkipReason: null,
+  });
+  if (!claimedSlot) return "concurrent_change";
+  const result = await RunnerJobService.startRunnerRun({
+    config,
+    projectId: config.projectId,
+  });
+  if ("runId" in result) return "started";
+  return result.error === "already_running" ? "already_running" : "noop";
+}
+
 // Cron body for the `scheduled` Worker handler: start a rank-check run for every
 // config that's due. Wrapped in `withPgClient` at the entrypoint (server.ts).
 export async function runScheduledRankChecks(env: Env) {
@@ -125,28 +149,19 @@ export async function runScheduledRankChecks(env: Env) {
       // Runner-provider configs cost nothing: no billing gate, no budget
       // consumption, no workflow — just queue jobs and advance the schedule.
       if (config.provider === "runner") {
-        const claimedSlot = await RankTrackingRepository.claimDueConfig({
-          configId: config.id,
-          projectId: config.projectId,
+        const outcome = await startRunnerConfig(
+          config,
           observedNextCheckAt,
           nextCheckAt,
-          lastSkipReason: null,
-        });
-        if (!claimedSlot) {
-          concurrentChangeSkips++;
-          continue;
-        }
-        const runnerResult = await RunnerJobService.startRunnerRun({
-          config,
-          projectId: config.projectId,
-        });
-        if ("runId" in runnerResult) {
-          started++;
-        } else if (runnerResult.error === "already_running") {
-          alreadyRunning++;
-          if (alreadyRunningConfigIds.length < ALREADY_RUNNING_IDS_CAP) {
-            alreadyRunningConfigIds.push(config.id);
-          }
+        );
+        if (outcome === "started") started++;
+        if (outcome === "concurrent_change") concurrentChangeSkips++;
+        if (outcome === "already_running") alreadyRunning++;
+        if (
+          outcome === "already_running" &&
+          alreadyRunningConfigIds.length < ALREADY_RUNNING_IDS_CAP
+        ) {
+          alreadyRunningConfigIds.push(config.id);
         }
         continue;
       }

@@ -48,6 +48,8 @@ async function createConfig(input: {
   devices?: RankTrackingConfig["devices"];
   serpDepth: number;
   scheduleInterval?: RankTrackingConfig["scheduleInterval"];
+  provider?: RankTrackingConfig["provider"];
+  trackLocalPack?: boolean;
 }) {
   const normalizedDomain = normalizeDomain(input.domain);
 
@@ -115,8 +117,8 @@ async function createConfig(input: {
     id: configId,
     projectId: input.projectId,
     domain: normalizedDomain,
-    provider: "dataforseo",
-    trackLocalPack: false,
+    provider: input.provider ?? "dataforseo",
+    trackLocalPack: input.trackLocalPack ?? false,
     locationCode,
     languageCode,
     locationName,
@@ -147,6 +149,8 @@ async function updateConfig(
     serpDepth?: number;
     scheduleInterval?: RankTrackingConfig["scheduleInterval"];
     isActive?: boolean;
+    provider?: RankTrackingConfig["provider"];
+    trackLocalPack?: boolean;
   },
 ) {
   const updates: typeof input & { nextCheckAt?: string | null } = {};
@@ -162,6 +166,9 @@ async function updateConfig(
   if (input.devices !== undefined) updates.devices = input.devices;
   if (input.serpDepth !== undefined) updates.serpDepth = input.serpDepth;
   if (input.isActive !== undefined) updates.isActive = input.isActive;
+  if (input.provider !== undefined) updates.provider = input.provider;
+  if (input.trackLocalPack !== undefined)
+    updates.trackLocalPack = input.trackLocalPack;
 
   if (input.scheduleInterval !== undefined) {
     updates.scheduleInterval = input.scheduleInterval;

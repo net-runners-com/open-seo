@@ -17,6 +17,8 @@ declare namespace Cloudflare {
     AUDIT_SCRATCHPAD: DurableObjectNamespace;
 
     AUTH_MODE?: "cloudflare_access" | "local_noauth" | "hosted";
+    // Fixed bearer token for the self-hosted rank runner (/api/runner/*).
+    RUNNER_TOKEN?: string;
     BYPASS_EMAIL_VERIFICATION?: string;
     TEAM_DOMAIN?: string;
     POLICY_AUD?: string;

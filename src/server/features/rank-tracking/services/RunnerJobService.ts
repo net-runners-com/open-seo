@@ -24,10 +24,10 @@ export interface RunnerAuthScope {
 const SELFHOST_HEARTBEAT_ID = "selfhost";
 
 const CLAIM_LIMIT_MAX = 50;
-export const CLAIM_TIMEOUT_MS = 30 * 60_000;
-export const CLAIM_MAX_ATTEMPTS = 3;
+const CLAIM_TIMEOUT_MS = 30 * 60_000;
+const CLAIM_MAX_ATTEMPTS = 3;
 
-export interface RunnerRunConfig {
+interface RunnerRunConfig {
   id: string;
   domain: string;
   languageCode: string;
@@ -58,7 +58,10 @@ async function claimJobs(
   scope: RunnerAuthScope,
   limit: number,
 ): Promise<RunnerJob[]> {
-  const clamped = Math.min(Math.max(1, Math.trunc(limit) || 1), CLAIM_LIMIT_MAX);
+  const clamped = Math.min(
+    Math.max(1, Math.trunc(limit) || 1),
+    CLAIM_LIMIT_MAX,
+  );
   const rows = await RankCheckJobRepository.claimJobs({
     organizationIds: scope.organizationIds,
     limit: clamped,
@@ -87,7 +90,7 @@ async function completeRunIfFinished(job: {
     keywordsChecked: counts.done,
     completedAt: nowIso,
   });
-  await RankTrackingRepository.markConfigChecked(job.configId, {
+  await RankCheckJobRepository.markConfigChecked(job.configId, {
     lastCheckedAt: nowIso,
     nextCheckAt: isScheduledRankTrackingInterval(job.scheduleInterval)
       ? computeNextCheckAt(job.scheduleInterval)
@@ -103,7 +106,11 @@ async function submitResults(
   let rejected = 0;
   const touchedRuns = new Map<
     string,
-    { runId: string; configId: string; scheduleInterval: RunnerRunConfig["scheduleInterval"] }
+    {
+      runId: string;
+      configId: string;
+      scheduleInterval: RunnerRunConfig["scheduleInterval"];
+    }
   >();
 
   for (const result of results) {
@@ -178,7 +185,7 @@ async function getRunnerStatus(
   ]);
   const newest = [own, selfhost]
     .filter((hb) => hb !== undefined)
-    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
+    .toSorted((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
   return newest ?? null;
 }
 

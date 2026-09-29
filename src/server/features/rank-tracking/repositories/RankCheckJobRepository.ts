@@ -136,9 +136,7 @@ async function getClaimedJob(
       eq(rankCheckJobs.configId, rankTrackingConfigs.id),
     )
     .innerJoin(projects, eq(rankTrackingConfigs.projectId, projects.id))
-    .where(
-      and(eq(rankCheckJobs.id, jobId), jobScopeFilter(organizationIds)),
-    )
+    .where(and(eq(rankCheckJobs.id, jobId), jobScopeFilter(organizationIds)))
     .limit(1);
   return rows[0];
 }
@@ -168,9 +166,7 @@ async function releaseExpiredClaims(input: {
   const failed = await db
     .update(rankCheckJobs)
     .set({ status: "failed", lastError: "claim expired" })
-    .where(
-      and(expired, sql`${rankCheckJobs.attempts} >= ${input.maxAttempts}`),
-    )
+    .where(and(expired, sql`${rankCheckJobs.attempts} >= ${input.maxAttempts}`))
     .returning({ runId: rankCheckJobs.runId });
   const released = await db
     .update(rankCheckJobs)
@@ -202,6 +198,17 @@ async function countJobsByStatusForRun(
     else counts.open += Number(row.count);
   }
   return counts;
+}
+
+// Stamp a runner config after its run closes (lastCheckedAt / nextCheckAt).
+async function markConfigChecked(
+  configId: string,
+  input: { lastCheckedAt: string; nextCheckAt: string | null },
+): Promise<void> {
+  await db
+    .update(rankTrackingConfigs)
+    .set(input)
+    .where(eq(rankTrackingConfigs.id, configId));
 }
 
 async function getRunnerHeartbeat(
@@ -242,6 +249,7 @@ export const RankCheckJobRepository = {
   markJobFailed,
   releaseExpiredClaims,
   countJobsByStatusForRun,
+  markConfigChecked,
   getRunnerHeartbeat,
   upsertRunnerHeartbeat,
 };
