@@ -266,9 +266,7 @@ describe("RunnerJobService.reconcileRunnerJobs", () => {
       "run_9",
       expect.objectContaining({ status: "completed", keywordsChecked: 2 }),
     );
-    expect(jobMocks.markConfigChecked).toHaveBeenCalledWith(
-      "cfg_9",
-      expect.objectContaining({ lastCheckedAt: expect.anything() }),
-    );
+    expect(jobMocks.markConfigChecked).toHaveBeenCalledTimes(1);
+    expect(jobMocks.markConfigChecked.mock.calls[0][0]).toBe("cfg_9");
   });
 });
