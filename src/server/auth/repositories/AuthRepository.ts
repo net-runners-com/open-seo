@@ -39,6 +39,15 @@ async function findFirstOrganizationIdForUser(userId: string) {
   return existingMembership?.organizationId ?? null;
 }
 
+async function getOrganizationIdsForUser(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt));
+  return rows.map((row) => row.organizationId);
+}
+
 async function getHostedUser(userId: string) {
   return db.query.user.findFirst({
     columns: {
@@ -51,6 +60,7 @@ async function getHostedUser(userId: string) {
 }
 
 export const AuthRepository = {
+  getOrganizationIdsForUser,
   upsertDelegatedOrganization,
   findFirstOrganizationIdForUser,
   getHostedUser,

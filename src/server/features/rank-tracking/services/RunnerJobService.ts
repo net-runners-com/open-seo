@@ -238,10 +238,10 @@ async function reconcileRunnerJobs(nowIso: string): Promise<void> {
     // A run whose expired jobs all aged into "failed" must still close.
     const run = await RankTrackingRepository.getRunById(runId);
     if (!run || run.status === "completed" || run.status === "failed") continue;
-    const config = await RankTrackingRepository.getConfigById(
-      run.configId,
-      run.projectId,
-    );
+    const config = await RankTrackingRepository.getConfigById({
+      configId: run.configId,
+      projectId: run.projectId,
+    });
     if (!config) continue;
     await completeRunIfFinished({
       runId,

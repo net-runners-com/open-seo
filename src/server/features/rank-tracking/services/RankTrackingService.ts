@@ -115,6 +115,8 @@ async function createConfig(input: {
     id: configId,
     projectId: input.projectId,
     domain: normalizedDomain,
+    provider: "dataforseo",
+    trackLocalPack: false,
     locationCode,
     languageCode,
     locationName,
