@@ -230,6 +230,12 @@ export const rankTrackingConfigs = sqliteTable(
     lastCheckedAt: text("last_checked_at"),
     nextCheckAt: text("next_check_at"),
     lastSkipReason: text("last_skip_reason"),
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
+    trackLocalPack: integer("track_local_pack", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -331,6 +337,10 @@ export const rankSnapshots = sqliteTable(
     position: integer("position"), // null = not found in top 20
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
+    localPackPosition: integer("local_pack_position"), // null = local pack 圏外 or 未計測
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
     checkedAt: text("checked_at")
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -350,6 +360,50 @@ export const rankSnapshots = sqliteTable(
     ),
   ],
 );
+
+// Pull-queue rows for provider="runner" configs. One row per keyword × device.
+// Results land in rank_snapshots; job rows only track claim/retry state.
+export const rankCheckJobs = sqliteTable(
+  "rank_check_jobs",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => rankCheckRuns.id, { onDelete: "cascade" }),
+    configId: text("config_id")
+      .notNull()
+      .references(() => rankTrackingConfigs.id, { onDelete: "cascade" }),
+    trackingKeywordId: text("tracking_keyword_id").notNull(),
+    keyword: text("keyword").notNull(),
+    device: text("device", { enum: ["desktop", "mobile"] }).notNull(),
+    includeLocalPack: integer("include_local_pack", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    status: text("status", {
+      enum: ["pending", "claimed", "done", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    claimedAt: text("claimed_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(current_timestamp)`),
+  },
+  (table) => [
+    index("rank_check_jobs_claim_idx").on(table.status, table.createdAt),
+    index("rank_check_jobs_run_idx").on(table.runId, table.status),
+  ],
+);
+
+// Last-seen state per runner. organizationId is "selfhost" when the runner
+// authenticates with RUNNER_TOKEN instead of a hosted API key.
+export const runnerHeartbeats = sqliteTable("runner_heartbeats", {
+  organizationId: text("organization_id").primaryKey(),
+  status: text("status", { enum: ["idle", "scraping", "cooldown"] }).notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+});
 
 // Dashboard activation milestones. Organization-scoped: MCP OAuth grants are
 // user-level, so any member connecting an external MCP client satisfies the

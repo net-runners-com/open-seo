@@ -141,6 +141,13 @@
       "when": 1786209409297,
       "tag": "0019_clammy_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790659903132,
+      "tag": "0020_fair_red_hulk",
+      "breakpoints": true
     }
   ]
 }
