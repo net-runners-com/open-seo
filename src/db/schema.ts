@@ -72,6 +72,8 @@ export const {
   rankTrackingKeywords,
   rankCheckRuns,
   rankSnapshots,
+  rankCheckJobs,
+  runnerHeartbeats,
   organizationActivationState,
   projectActivationState,
   backlinkSnapshots,
