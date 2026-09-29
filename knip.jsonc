@@ -35,7 +35,7 @@
     "!.alchemy/**",
     "!badseo/**",
   ],
-  "ignore": ["drizzle-prod.config.ts"],
+  "ignore": ["drizzle-prod.config.ts", "runner/**"],
   // Disable Drizzle plugin - it tries to load drizzle.config.ts which imports cloudflare:workers
   "drizzle": false,
   "ignoreDependencies": [
