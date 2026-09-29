@@ -231,6 +231,12 @@ export const rankTrackingConfigs = sqliteTable(
     lastCheckedAt: text("last_checked_at"),
     nextCheckAt: text("next_check_at"),
     lastSkipReason: text("last_skip_reason"),
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
+    trackLocalPack: integer("track_local_pack", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(current_timestamp)`),
@@ -338,6 +344,10 @@ export const rankSnapshots = sqliteTable(
     position: integer("position"), // null = not found in top 20
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
+    localPackPosition: integer("local_pack_position"), // null = local pack 圏外 or 未計測
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
     checkedAt: text("checked_at")
       .notNull()
       .default(sql`(current_timestamp)`),

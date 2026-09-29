@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { RankTrackingDomainList } from "@/client/features/rank-tracking/RankTrackingDomainList";
 import { RankTrackingConfigModal } from "@/client/features/rank-tracking/RankTrackingConfigModal";
+import { RunnerStatusBanner } from "@/client/features/rank-tracking/RunnerStatusBanner";
 
 export const Route = createFileRoute("/_project/p/$projectId/rank-tracking/")({
   component: RankTrackingIndex,
@@ -25,6 +26,7 @@ function RankTrackingIndex() {
 
   return (
     <>
+      <RunnerStatusBanner projectId={projectId} />
       <RankTrackingDomainList
         projectId={projectId}
         onAddDomain={() => setShowConfigModal(true)}

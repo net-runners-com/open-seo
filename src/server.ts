@@ -26,6 +26,10 @@ import {
 import { sweepDubReferredOrganizations } from "@/server/referrals/dub";
 import { maybeSendSelfHostHeartbeat } from "@/server/lib/self-host-telemetry";
 import { handleGdprStorageErasure } from "@/server/gdpr/storage-erasure";
+import {
+  handleRunnerRequest,
+  RUNNER_ROUTE_PREFIX,
+} from "@/server/features/rank-tracking/runner/runner-http";
 import { GDPR_STORAGE_ERASURE_PATH } from "@/shared/gdpr-erasure";
 
 const startHandler = createStartHandler(defaultStreamHandler);
@@ -151,6 +155,14 @@ function handleFetch(
 
   if (pathname.startsWith("/agents/")) {
     return routeChatAgents(publicRequest, env);
+  }
+
+  // Self-hosted rank runner API (API key or RUNNER_TOKEN auth) — kept off the
+  // OAuth wrapper and the TanStack route guard in every auth mode.
+  if (pathname.startsWith(RUNNER_ROUTE_PREFIX)) {
+    return handleRunnerRequest(publicRequest).then(
+      (response) => response ?? new Response("Not found", { status: 404 }),
+    );
   }
 
   if (isHostedAuthMode(authMode)) {

@@ -62,6 +62,8 @@ export const getConfigsSchema = z.object({
   projectId: z.string().uuid(),
 });
 
+const rankTrackingProviderSchema = z.enum(["dataforseo", "runner"]);
+
 export const createConfigSchema = z.object({
   projectId: z.string().uuid(),
   domain: domainField,
@@ -71,6 +73,8 @@ export const createConfigSchema = z.object({
   devices: devicesEnum.optional(),
   serpDepth: z.number().int().min(10).max(100).multipleOf(10),
   scheduleInterval: scheduleEnum.optional(),
+  provider: rankTrackingProviderSchema.optional(),
+  trackLocalPack: z.boolean().optional(),
 });
 
 export const updateConfigSchema = z.object({
@@ -84,6 +88,8 @@ export const updateConfigSchema = z.object({
   serpDepth: z.number().int().min(10).max(100).multipleOf(10).optional(),
   scheduleInterval: scheduleEnum.optional(),
   isActive: z.boolean().optional(),
+  provider: rankTrackingProviderSchema.optional(),
+  trackLocalPack: z.boolean().optional(),
 });
 
 export const triggerCheckSchema = z.object({

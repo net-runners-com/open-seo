@@ -235,6 +235,10 @@ export const rankTrackingConfigs = pgTable(
     lastCheckedAt: timestampColumn("last_checked_at"),
     nextCheckAt: timestampColumn("next_check_at"),
     lastSkipReason: text("last_skip_reason"),
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
+    trackLocalPack: boolean("track_local_pack").notNull().default(false),
     createdAt: timestampColumn("created_at").notNull().default(isoNow),
   },
   (table) => [
@@ -332,6 +336,10 @@ export const rankSnapshots = pgTable(
     position: integer("position"), // null = not found in top 20
     url: text("url"),
     serpFeatures: text("serp_features"), // JSON array of feature type strings
+    localPackPosition: integer("local_pack_position"), // null = local pack 圏外 or 未計測
+    provider: text("provider", { enum: ["dataforseo", "runner"] })
+      .notNull()
+      .default("dataforseo"),
     checkedAt: timestampColumn("checked_at").notNull().default(isoNow),
   },
   (table) => [
@@ -350,6 +358,10 @@ export const rankSnapshots = pgTable(
   ],
 );
 
+// Pull-queue rows for provider="runner" configs. One row per keyword × device.
+// Results land in rank_snapshots; job rows only track claim/retry state.
+// Last-seen state per runner. organizationId is "selfhost" when the runner
+// authenticates with RUNNER_TOKEN instead of a hosted API key.
 // Dashboard activation milestones. Organization-scoped: MCP OAuth grants are
 // user-level, so any member connecting an external MCP client satisfies the
 // milestone for the whole organization. Timestamps are first-occurrence only

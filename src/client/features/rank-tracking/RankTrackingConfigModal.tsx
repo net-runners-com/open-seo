@@ -7,7 +7,6 @@ import { domainField, normalizeDomain } from "@/types/schemas/domain";
 import {
   depthToPages,
   pagesToDepth,
-  estimateRankCheckCredits,
 } from "@/shared/rank-tracking";
 import { getLanguageCode } from "@/client/features/keywords/locations";
 import {
@@ -15,6 +14,8 @@ import {
   getIsoCountryCode,
 } from "@/shared/keyword-locations";
 import { LocationSelect } from "@/client/components/LocationSelect";
+import { RunnerProviderFields } from "@/client/features/rank-tracking/RunnerProviderFields";
+import { RankCheckCostEstimate } from "@/client/features/rank-tracking/RankCheckCostEstimate";
 import type { ProjectMarket } from "@/client/features/projects/types";
 import { useProjectMarket } from "@/client/features/projects/useProjectMarket";
 import { SearchTargetingField } from "./SearchTargetingField";
@@ -97,6 +98,12 @@ function RankTrackingConfigModalContent({
   const [locationName, setLocationName] = useState<string | undefined>(
     existingConfig?.locationName ?? undefined,
   );
+  const [provider, setProvider] = useState<"dataforseo" | "runner">(
+    existingConfig?.provider ?? "dataforseo",
+  );
+  const [trackLocalPack, setTrackLocalPack] = useState(
+    existingConfig?.trackLocalPack ?? false,
+  );
   const [createdConfigId, setCreatedConfigId] = useState<string | null>(null);
 
   const selectedCountryCode = useMemo(
@@ -115,6 +122,8 @@ function RankTrackingConfigModalContent({
       targetingMode,
       locationName,
       schedule,
+      provider,
+      trackLocalPack,
     },
     onCreated: (configId) => {
       setCreatedConfigId(configId);
@@ -342,37 +351,20 @@ function RankTrackingConfigModalContent({
           </div>
         </div>
 
-        {(() => {
-          // Scheduled checks run through the cheaper task queue; manual
-          // configs only ever pay the live price.
-          const { costUsd: costPerKeyword } = estimateRankCheckCredits(
-            1,
-            devices,
-            serpDepth,
-            schedule === "manual" ? "live" : "queued",
-          );
-          const checksPerMonth =
-            schedule === "daily" ? 30 : schedule === "weekly" ? 4 : 1;
-          return (
-            <div className="rounded-lg bg-base-200/50 px-3 py-2.5 text-xs text-base-content/70 space-y-0.5">
-              <div>
-                <span className="font-mono font-semibold text-base-content">
-                  ~${costPerKeyword.toFixed(4)}
-                </span>{" "}
-                per keyword per check
-              </div>
-              {schedule !== "manual" && (
-                <div>
-                  50 keywords would cost{" "}
-                  <span className="font-mono font-semibold text-base-content">
-                    ~${(costPerKeyword * 50 * checksPerMonth).toFixed(2)}
-                  </span>
-                  /month
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        <RunnerProviderFields
+          provider={provider}
+          onProviderChange={setProvider}
+          trackLocalPack={trackLocalPack}
+          onTrackLocalPackChange={setTrackLocalPack}
+        />
+
+        {provider === "dataforseo" && (
+          <RankCheckCostEstimate
+            devices={devices}
+            serpDepth={serpDepth}
+            schedule={schedule}
+          />
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button

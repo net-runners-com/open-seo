@@ -13,6 +13,8 @@ type DueConfigRow = {
   scheduleInterval: "daily" | "weekly" | "monthly" | "manual";
   nextCheckAt: string | null;
   organizationId: string;
+  provider: "dataforseo" | "runner";
+  trackLocalPack: boolean;
 };
 
 type ClaimInput = {
@@ -45,6 +47,14 @@ const mocks = vi.hoisted(() => ({
     >(),
   customerHasPaidPlan: vi.fn<(organizationId: string) => Promise<boolean>>(),
   isHostedServerAuthMode: vi.fn<() => Promise<boolean>>(),
+  startRunnerRun:
+    vi.fn<
+      (input: {
+        config: DueConfigRow;
+        projectId: string;
+      }) => Promise<{ runId: string } | { error: string }>
+    >(),
+  reconcileRunnerJobs: vi.fn<(nowIso: string) => Promise<void>>(),
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
@@ -67,6 +77,12 @@ vi.mock("@/server/billing/subscription", () => ({
 vi.mock("@/server/lib/runtime-env", () => ({
   isHostedServerAuthMode: mocks.isHostedServerAuthMode,
 }));
+vi.mock("@/server/features/rank-tracking/services/RunnerJobService", () => ({
+  RunnerJobService: {
+    startRunnerRun: mocks.startRunnerRun,
+    reconcileRunnerJobs: mocks.reconcileRunnerJobs,
+  },
+}));
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test double for the workflow binding
 const testEnv = { RANK_CHECK_WORKFLOW: {} } as unknown as Env;
@@ -84,6 +100,8 @@ function dueConfig(overrides: Partial<DueConfigRow> = {}): DueConfigRow {
     scheduleInterval: "daily" as const,
     nextCheckAt: "2026-01-01T00:00:00.000Z",
     organizationId: "org_1",
+    provider: "dataforseo" as const,
+    trackLocalPack: false,
     ...overrides,
   };
 }
@@ -376,5 +394,74 @@ describe("runScheduledRankChecks", () => {
 
     expect(mocks.customerHasPaidPlan).not.toHaveBeenCalled();
     expect(mocks.beginRankCheckRun).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runScheduledRankChecks runner provider", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mocks.isHostedServerAuthMode.mockResolvedValue(true);
+    mocks.customerHasPaidPlan.mockResolvedValue(true);
+    mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.startRunnerRun.mockResolvedValue({ runId: "run_r1" });
+    mocks.getKeywordCountsForConfigs.mockResolvedValue(
+      new Map([["config_1", 5]]),
+    );
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([
+      dueConfig({ provider: "runner", trackLocalPack: true }),
+    ]);
+  });
+
+  it("creates runner jobs instead of a DataForSEO workflow, with no billing gate", async () => {
+    await runTick();
+
+    expect(mocks.startRunnerRun).toHaveBeenCalledTimes(1);
+    expect(mocks.startRunnerRun).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "project_1" }),
+    );
+    expect(mocks.beginRankCheckRun).not.toHaveBeenCalled();
+    expect(mocks.customerHasPaidPlan).not.toHaveBeenCalled();
+    // Schedule still advances via the usual claim.
+    expect(mocks.claimDueConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles expired runner claims every tick", async () => {
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([]);
+    await runTick();
+    expect(mocks.reconcileRunnerJobs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runScheduledRankChecks budget isolation for runner configs", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    mocks.isHostedServerAuthMode.mockResolvedValue(true);
+    mocks.customerHasPaidPlan.mockResolvedValue(true);
+    mocks.claimDueConfig.mockResolvedValue(true);
+    mocks.beginRankCheckRun.mockResolvedValue({ ok: true, runId: "run_x" });
+    mocks.startRunnerRun.mockResolvedValue({ runId: "run_r" });
+  });
+
+  it("a large runner config neither consumes budget nor starves later paid configs", async () => {
+    mocks.getDueConfigsWithOrganization.mockResolvedValue([
+      dueConfig({ id: "df_1" }),
+      dueConfig({ id: "runner_big", provider: "runner" }),
+      dueConfig({ id: "df_2", nextCheckAt: "2026-01-03T00:00:00.000Z" }),
+    ]);
+    mocks.getKeywordCountsForConfigs.mockResolvedValue(
+      new Map([
+        ["df_1", 5],
+        ["runner_big", 600], // 600 kw x both = 1200 units > budget 1000
+        ["df_2", 5],
+      ]),
+    );
+
+    await runTick();
+
+    expect(mocks.startRunnerRun).toHaveBeenCalledTimes(1);
+    // The paid config after the runner config must still be admitted.
+    expect(mocks.beginRankCheckRun).toHaveBeenCalledTimes(2);
   });
 });

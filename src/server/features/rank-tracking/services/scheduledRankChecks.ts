@@ -1,4 +1,5 @@
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
+import { RunnerJobService } from "@/server/features/rank-tracking/services/RunnerJobService";
 import { beginRankCheckRun } from "@/server/features/rank-tracking/services/rankCheckRunGuards";
 import { customerHasPaidPlan } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
@@ -33,10 +34,37 @@ const TICK_DEADLINE_MS = 3 * 60_000;
 // configs leave no durable trace on their row, so the summary names them.
 const ALREADY_RUNNING_IDS_CAP = 20;
 
+// Claim a runner-provider config's schedule slot and queue its jobs.
+async function startRunnerConfig(
+  config: Awaited<
+    ReturnType<typeof RankTrackingRepository.getDueConfigsWithOrganization>
+  >[number],
+  observedNextCheckAt: string,
+  nextCheckAt: string,
+): Promise<"started" | "concurrent_change" | "already_running" | "noop"> {
+  const claimedSlot = await RankTrackingRepository.claimDueConfig({
+    configId: config.id,
+    projectId: config.projectId,
+    observedNextCheckAt,
+    nextCheckAt,
+    lastSkipReason: null,
+  });
+  if (!claimedSlot) return "concurrent_change";
+  const result = await RunnerJobService.startRunnerRun({
+    config,
+    projectId: config.projectId,
+  });
+  if ("runId" in result) return "started";
+  return result.error === "already_running" ? "already_running" : "noop";
+}
+
 // Cron body for the `scheduled` Worker handler: start a rank-check run for every
 // config that's due. Wrapped in `withPgClient` at the entrypoint (server.ts).
 export async function runScheduledRankChecks(env: Env) {
   const nowIso = new Date().toISOString();
+  // Return expired runner claims to the queue (or fail them out) before
+  // admitting new work, so a dead runner can't hold runs open forever.
+  await RunnerJobService.reconcileRunnerJobs(nowIso);
   const dueConfigs =
     await RankTrackingRepository.getDueConfigsWithOrganization(nowIso);
   const isHosted = await isHostedServerAuthMode();
@@ -91,17 +119,6 @@ export async function runScheduledRankChecks(env: Env) {
 
       const kwCount = keywordCounts.get(config.id) ?? 0;
       const taskUnits = kwCount * devicesCount(config.devices);
-      // Projected stop: admit only what fits the budget. The first start of a
-      // tick is exempt so an oversized config can never starve, and zero-unit
-      // rows (no keywords) always advance.
-      if (
-        started > 0 &&
-        unitsStarted + taskUnits > SCHEDULED_TASK_UNIT_BUDGET
-      ) {
-        stoppedByBudget = true;
-        break;
-      }
-
       const observedNextCheckAt = config.nextCheckAt;
       const nextCheckAt = computeNextCheckAt(interval, observedNextCheckAt);
 
@@ -116,6 +133,38 @@ export async function runScheduledRankChecks(env: Env) {
         if (claimed) skippedNoKeywords++;
         else concurrentChangeSkips++;
         continue;
+      }
+
+      // Runner-provider configs cost nothing: no billing gate, no budget
+      // consumption, no workflow — just queue jobs and advance the schedule.
+      if (config.provider === "runner") {
+        const outcome = await startRunnerConfig(
+          config,
+          observedNextCheckAt,
+          nextCheckAt,
+        );
+        if (outcome === "started") started++;
+        if (outcome === "concurrent_change") concurrentChangeSkips++;
+        if (outcome === "already_running") alreadyRunning++;
+        if (
+          outcome === "already_running" &&
+          alreadyRunningConfigIds.length < ALREADY_RUNNING_IDS_CAP
+        ) {
+          alreadyRunningConfigIds.push(config.id);
+        }
+        continue;
+      }
+
+      // Projected stop: admit only what fits the budget. The first start of a
+      // tick is exempt so an oversized config can never starve, and zero-unit
+      // rows (no keywords) always advance. Runner configs never reach this:
+      // the budget guards DataForSEO request rate, which they don't consume.
+      if (
+        started > 0 &&
+        unitsStarted + taskUnits > SCHEDULED_TASK_UNIT_BUDGET
+      ) {
+        stoppedByBudget = true;
+        break;
       }
 
       // Self-hosted deployments treat every config as paid and make no Autumn

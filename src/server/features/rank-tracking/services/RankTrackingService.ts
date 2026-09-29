@@ -34,6 +34,7 @@ import {
 import { getLatestResults } from "./rankTrackingResults";
 import { toSqliteTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 import { RankTrackingKeywordService } from "./RankTrackingKeywordService";
+import { RunnerJobService } from "./RunnerJobService";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -49,6 +50,8 @@ async function createConfig(input: {
   devices?: RankTrackingConfig["devices"];
   serpDepth: number;
   scheduleInterval?: RankTrackingConfig["scheduleInterval"];
+  provider?: RankTrackingConfig["provider"];
+  trackLocalPack?: boolean;
 }) {
   const normalizedDomain = normalizeDomain(input.domain);
 
@@ -126,6 +129,8 @@ async function createConfig(input: {
     id: configId,
     projectId: input.projectId,
     domain: normalizedDomain,
+    provider: input.provider ?? "dataforseo",
+    trackLocalPack: input.trackLocalPack ?? false,
     locationCode,
     languageCode,
     locationName,
@@ -156,6 +161,8 @@ async function updateConfig(
     serpDepth?: number;
     scheduleInterval?: RankTrackingConfig["scheduleInterval"];
     isActive?: boolean;
+    provider?: RankTrackingConfig["provider"];
+    trackLocalPack?: boolean;
   },
 ) {
   const updates: typeof input & { nextCheckAt?: string | null } = {};
@@ -194,6 +201,9 @@ async function updateConfig(
   if (input.devices !== undefined) updates.devices = input.devices;
   if (input.serpDepth !== undefined) updates.serpDepth = input.serpDepth;
   if (input.isActive !== undefined) updates.isActive = input.isActive;
+  if (input.provider !== undefined) updates.provider = input.provider;
+  if (input.trackLocalPack !== undefined)
+    updates.trackLocalPack = input.trackLocalPack;
 
   if (input.scheduleInterval !== undefined) {
     updates.scheduleInterval = input.scheduleInterval;
@@ -219,6 +229,26 @@ async function triggerCheck(input: {
   maxCostCredits?: number;
 }): Promise<RankCheckTriggerResult> {
   const config = await getValidatedConfig(input.configId, input.projectId);
+
+  // Runner-provider configs cost nothing: queue jobs for the self-hosted
+  // runner instead of a DataForSEO workflow, with no billing gate.
+  if (config.provider === "runner") {
+    const runnerResult = await RunnerJobService.startRunnerRun({
+      config,
+      projectId: input.projectId,
+      keywordIds: input.keywordIds,
+    });
+    if ("runId" in runnerResult) {
+      return { ok: true, runId: runnerResult.runId };
+    }
+    if (runnerResult.error === "no_keywords") {
+      throw new AppError(
+        "INTERNAL_ERROR",
+        "No keywords to track. Add keywords to this domain first.",
+      );
+    }
+    return { ok: false, reason: "already_running", blockingRunId: null };
+  }
 
   await requireRankCheckAccess(input.billingCustomer.organizationId);
 

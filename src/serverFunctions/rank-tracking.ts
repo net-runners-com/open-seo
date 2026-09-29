@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { waitUntil } from "cloudflare:workers";
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
+import { RunnerJobService } from "@/server/features/rank-tracking/services/RunnerJobService";
 import { RankTrackingService } from "@/server/features/rank-tracking/services/RankTrackingService";
 import { getLatestResults } from "@/server/features/rank-tracking/services/rankTrackingResults";
 import { AppError, asAppError } from "@/server/lib/errors";
@@ -83,6 +84,8 @@ export const createRankTrackingConfig = createServerFn({ method: "POST" })
       devices: data.devices,
       serpDepth: data.serpDepth,
       scheduleInterval: data.scheduleInterval,
+      provider: data.provider,
+      trackLocalPack: data.trackLocalPack,
     });
 
     waitUntil(
@@ -115,8 +118,27 @@ export const updateRankTrackingConfig = createServerFn({ method: "POST" })
       serpDepth: data.serpDepth,
       scheduleInterval: data.scheduleInterval,
       isActive: data.isActive,
+      provider: data.provider,
+      trackLocalPack: data.trackLocalPack,
     });
     return { success: true };
+  });
+
+// Latest runner heartbeat for this workspace, for the "runner offline"
+// banner. stale = no heartbeat in the last 30 minutes.
+export const getRunnerStatus = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(getConfigsSchema)
+  .handler(async ({ context }) => {
+    const heartbeat = await RunnerJobService.getRunnerStatus(
+      context.organizationId,
+    );
+    if (!heartbeat) return null;
+    return {
+      ...heartbeat,
+      stale:
+        Date.now() - new Date(heartbeat.lastSeenAt).getTime() > 30 * 60_000,
+    };
   });
 
 export const triggerRankCheck = createServerFn({ method: "POST" })
